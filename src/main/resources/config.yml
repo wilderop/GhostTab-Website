@@ -26,10 +26,16 @@ offline-format: "<dark_gray>{name} <gray>offline {time}</gray>"
 # Seed lifetime playtime from vanilla/Paper stats files on startup.
 # Point each entry at a world's stats folder, or at the world folder itself
 # (the plugin will look for a stats/ subdirectory).
-# Example:
-#   - /home/minecraft/survival/world/stats
 stats-directories: []
 
 # If true, re-scan stats files every startup and keep the higher of
 # stored lifetime seconds vs the player file (never decreases).
 import-stats-on-startup: true
+
+# Write a GhostTab-matching snapshot to plugins/ghosttab/status.json
+export-json: true
+
+# Optional outbound POST of that same JSON (Cloudflare Worker later).
+# Leave empty to stay local-only. No inbound port is opened.
+push-url: ""
+push-token: ""
