@@ -4,6 +4,8 @@ Working copy of [wilderop/GhostTab](https://github.com/wilderop/GhostTab) for we
 
 **The original repo is not modified.** All website-related plugin changes go here.
 
+Current plugin version in this repo: **1.9-website**
+
 ---
 
 # GhostTab
@@ -26,6 +28,8 @@ Offline players remain visible for a configurable window (default **24 hours**).
 - Offline/ghost players sorted by offline time (longest offline at the bottom)
 - Caches player skins so ghosts keep their real skin after disconnect/reboot
 - No dependency on backend plugins or VelocityTab
+- **Lifetime playtime per player** (survives the 24h ghost window)
+- **Import past playtime** from Paper/vanilla `world/stats/<uuid>.json` files
 
 ## Requirements
 
@@ -34,13 +38,36 @@ Offline players remain visible for a configurable window (default **24 hours**).
 
 ## Installation
 
-1. Download the latest `GhostTab.jar` from Releases (or build it yourself)
-2. Place it in your Velocity `plugins/` folder
-3. Restart / start the proxy
-4. Edit `plugins/ghosttab/config.yml` as desired
-5. Restart or reload if you add a reload command later
+1. Build this repo (`mvn clean package`) or wait for a release jar
+2. Place `GhostTab.jar` in the Velocity `plugins/` folder (replace the current one when you are ready)
+3. Restart the proxy
+4. Edit `plugins/ghosttab/config.yml` and add your backend stats folders (see below)
+5. Restart again so the importer can seed totals
 
 **Important:** Disable or remove VelocityTab / Velocitab if you are using this plugin, otherwise they will conflict over the tab list.
+
+## Lifetime playtime
+
+Totals are stored in `plugins/ghosttab/totals.yml` and are never trimmed by the 24h ghost window.
+
+On login/logout/save the plugin adds completed session time. On startup it can also read vanilla playtime from player stat files and keep the **higher** of stored vs file (never decreases).
+
+Add your survival world stats path:
+
+```yaml
+stats-directories:
+  - /path/to/your/paper/world/stats
+import-stats-on-startup: true
+```
+
+You can point at the world folder instead of `stats/`; the plugin looks for a `stats` subdirectory.
+
+It reads:
+- `stats.minecraft:custom.minecraft:play_time`
+- `stats.minecraft:custom.minecraft:play_one_minute`
+- older `stat.playOneMinute`
+
+Those values are ticks; the plugin stores seconds (`ticks / 20`).
 
 ## Building
 
@@ -49,26 +76,6 @@ mvn clean package
 ```
 
 The shaded jar will be in `target/GhostTab.jar`.
-
-## Configuration
-
-See `config.yml` for all options:
-
-```yaml
-offline-window-hours: 24
-update-interval-seconds: 30
-playtime-window-hours: 12
-header: "<gold><bold>A Zombie Pigman Broke My Door</bold></gold>"
-footer: "<gray>Players have played a total of <white>{total_hours}</white> hours in the last {playtime_window} hours</gray>"
-online-format: "<white>{name} <gray>{time}</gray>"
-offline-format: "<dark_gray>{name} <gray>offline {time}</gray>"
-```
-
-## Notes
-
-- Ghost player skins are cached from when they were last online and restored after disconnect/reboot.
-- The plugin tracks players that connect through the proxy. Players who only ever joined backends directly will not appear.
-- Times are approximate and update on the configured interval.
 
 ## License
 
