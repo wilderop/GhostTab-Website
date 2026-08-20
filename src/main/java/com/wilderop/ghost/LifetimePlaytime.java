@@ -97,7 +97,8 @@ public final class LifetimePlaytime {
                     if (!(entry.getValue() instanceof Map<?, ?> values)) {
                         continue;
                     }
-                    String name = String.valueOf(values.getOrDefault("name", "Unknown"));
+                    Object nameObj = values.get("name");
+                    String name = nameObj == null ? "Unknown" : String.valueOf(nameObj);
                     Object secObj = values.get("seconds");
                     long seconds = secObj instanceof Number n ? n.longValue() : 0L;
                     if (seconds < 0) {
