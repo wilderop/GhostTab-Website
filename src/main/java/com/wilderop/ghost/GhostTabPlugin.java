@@ -4,6 +4,7 @@ import com.google.inject.Inject;
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.connection.DisconnectEvent;
 import com.velocitypowered.api.event.connection.PostLoginEvent;
+import com.velocitypowered.api.event.player.ServerConnectedEvent;
 import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
 import com.velocitypowered.api.event.proxy.ProxyShutdownEvent;
 import com.velocitypowered.api.plugin.Plugin;
@@ -169,6 +170,19 @@ public class GhostTabPlugin {
 
         cleanOldEntries();
         cleanOldSessions();
+        server.getScheduler().buildTask(this, this::updateAllTabLists)
+                .delay(250, TimeUnit.MILLISECONDS)
+                .schedule();
+    }
+
+    @Subscribe
+    public void onServerConnected(ServerConnectedEvent event) {
+        // Backend tab packets arrive after the switch and would drop other-server names.
+        for (long delayMs : new long[]{50L, 250L, 800L, 2000L}) {
+            server.getScheduler().buildTask(this, this::updateAllTabLists)
+                    .delay(delayMs, TimeUnit.MILLISECONDS)
+                    .schedule();
+        }
     }
 
     private void updateAllTabLists() {
@@ -246,8 +260,13 @@ public class GhostTabPlugin {
             onlineOrder--;
             if (data.uuid == null) continue;
 
+            Instant since = data.onlineSince != null ? data.onlineSince : now;
+            String timeStr = formatDuration(Duration.between(since, now));
+            Component displayComponent = buildOnlineDisplay(data, timeStr);
+
             Optional<TabListEntry> existingOpt = tabList.getEntry(data.uuid);
             if (existingOpt.isEmpty()) {
+                injectOnlineEntry(tabList, data, displayComponent, onlineOrder);
                 continue;
             }
 
@@ -255,25 +274,17 @@ public class GhostTabPlugin {
 
             if (!data.ghostTabApplied) {
                 captureNickFromEntry(data, existing);
-            }
-
-            Instant since = data.onlineSince != null ? data.onlineSince : now;
-            String timeStr = formatDuration(Duration.between(since, now));
-
-            Component displayComponent;
-            if (data.nickDisplay != null && !looksLikeGhostTabFormat(data.nickDisplay, data.name)) {
-                displayComponent = data.nickDisplay.append(parse("<gray> " + timeStr + "</gray>"));
-            } else {
-                String display = onlineFormat
-                        .replace("{name}", data.name)
-                        .replace("{time}", timeStr);
-                displayComponent = parse(display);
+                displayComponent = buildOnlineDisplay(data, timeStr);
             }
 
             existing.setDisplayName(displayComponent);
             data.ghostTabApplied = true;
             try {
                 existing.setListOrder(onlineOrder);
+            } catch (Throwable ignored) {
+            }
+            try {
+                existing.setListed(true);
             } catch (Throwable ignored) {
             }
         }
@@ -314,6 +325,54 @@ public class GhostTabPlugin {
         }
 
         viewer.sendPlayerListHeaderAndFooter(header, footer);
+    }
+
+    private Component buildOnlineDisplay(PlayerData data, String timeStr) {
+        if (data.nickDisplay != null && !looksLikeGhostTabFormat(data.nickDisplay, data.name)) {
+            return data.nickDisplay.append(parse("<gray> " + timeStr + "</gray>"));
+        }
+        String display = onlineFormat
+                .replace("{name}", data.name)
+                .replace("{time}", timeStr);
+        return parse(display);
+    }
+
+    private void injectOnlineEntry(TabList tabList, PlayerData data, Component displayComponent, int listOrder) {
+        server.getPlayer(data.uuid).ifPresent(p -> captureSkin(data, p));
+        List<GameProfile.Property> props = data.properties != null ? data.properties : List.of();
+        GameProfile profile = new GameProfile(data.uuid, data.name, props);
+
+        int ping = 0;
+        Optional<Player> live = server.getPlayer(data.uuid);
+        if (live.isPresent()) {
+            ping = (int) Math.max(0, live.get().getPing());
+        }
+
+        TabListEntry.Builder builder = TabListEntry.builder()
+                .tabList(tabList)
+                .profile(profile)
+                .displayName(displayComponent)
+                .latency(ping)
+                .gameMode(0);
+
+        try {
+            builder.listed(true);
+        } catch (Throwable ignored) {
+        }
+        try {
+            builder.listOrder(listOrder);
+        } catch (Throwable ignored) {
+        }
+
+        try {
+            tabList.addEntry(builder.build());
+            data.ghostTabApplied = true;
+        } catch (IllegalArgumentException ignored) {
+            tabList.getEntry(data.uuid).ifPresent(existing -> {
+                existing.setDisplayName(displayComponent);
+                data.ghostTabApplied = true;
+            });
+        }
     }
 
     private Component buildOfflineDisplay(PlayerData data, String timeStr) {
