@@ -34,7 +34,7 @@ import java.util.stream.Collectors;
 @Plugin(
         id = "ghosttab",
         name = "GhostTab",
-        version = "1.9-website",
+        version = "1.10-website",
         description = "Shows online players with session time and recently offline players in the tab list",
         authors = {"wilderop"}
 )
@@ -58,6 +58,7 @@ public class GhostTabPlugin {
     private final List<Path> statsDirectories = new ArrayList<>();
     private boolean importStatsOnStartup = true;
     private LifetimePlaytime lifetime;
+    private TabSnapshot snapshot;
 
     @Inject
     public GhostTabPlugin(ProxyServer server, Logger logger, @DataDirectory Path dataDirectory) {
@@ -69,6 +70,7 @@ public class GhostTabPlugin {
     @Subscribe
     public void onProxyInitialization(ProxyInitializeEvent event) {
         this.lifetime = new LifetimePlaytime(dataDirectory, logger);
+        this.snapshot = new TabSnapshot(dataDirectory, logger);
         loadConfig();
         loadData();
         loadPlaytime();
@@ -96,7 +98,7 @@ public class GhostTabPlugin {
                 .repeat(5, TimeUnit.MINUTES)
                 .schedule();
 
-        logger.info("GhostTab v1.9-website enabled. Offline window: {}h, playtime window: {}h, update every {}s",
+        logger.info("GhostTab v1.10-website enabled. Offline window: {}h, playtime window: {}h, update every {}s",
                 TimeUnit.MILLISECONDS.toHours(offlineWindowMillis),
                 TimeUnit.MILLISECONDS.toHours(playtimeWindowMillis),
                 updateIntervalSeconds);
@@ -215,6 +217,8 @@ public class GhostTabPlugin {
                 logger.warn("Failed to update tab list for {}", viewer.getUsername(), e);
             }
         }
+
+        publishSnapshot(now, online, offline, totalHours);
     }
 
     private void updateTabListFor(Player viewer, List<PlayerData> online, List<PlayerData> offline,
@@ -384,6 +388,19 @@ public class GhostTabPlugin {
                     offlineFormat = String.valueOf(cfg.getOrDefault("offline-format", offlineFormat));
                     importStatsOnStartup = Boolean.parseBoolean(String.valueOf(
                             cfg.getOrDefault("import-stats-on-startup", true)));
+                    boolean exportJson = Boolean.parseBoolean(String.valueOf(
+                            cfg.getOrDefault("export-json", true)));
+                    String pushUrl = String.valueOf(cfg.getOrDefault("push-url", "")).trim();
+                    if ("null".equals(pushUrl)) {
+                        pushUrl = "";
+                    }
+                    String pushToken = String.valueOf(cfg.getOrDefault("push-token", "")).trim();
+                    if ("null".equals(pushToken)) {
+                        pushToken = "";
+                    }
+                    if (snapshot != null) {
+                        snapshot.configure(exportJson, pushUrl, pushToken);
+                    }
                     statsDirectories.clear();
                     Object dirs = cfg.get("stats-directories");
                     if (dirs instanceof List<?> list) {
@@ -611,6 +628,29 @@ public class GhostTabPlugin {
             }
         }
         return total;
+    }
+
+    private void publishSnapshot(Instant now, List<PlayerData> online, List<PlayerData> offline, String totalHours) {
+        if (snapshot == null) {
+            return;
+        }
+        List<TabSnapshot.Row> on = new ArrayList<>();
+        List<TabSnapshot.Row> ghosts = new ArrayList<>();
+        for (PlayerData d : online) {
+            if (d.uuid == null) {
+                continue;
+            }
+            on.add(new TabSnapshot.Row(d.uuid, d.name, d.onlineSince, d.lastSeen, getLifetimeSeconds(d.uuid)));
+        }
+        for (PlayerData d : offline) {
+            if (d.uuid == null) {
+                continue;
+            }
+            ghosts.add(new TabSnapshot.Row(d.uuid, d.name, d.onlineSince, d.lastSeen, getLifetimeSeconds(d.uuid)));
+        }
+        long playHours = TimeUnit.MILLISECONDS.toHours(playtimeWindowMillis);
+        long offHours = TimeUnit.MILLISECONDS.toHours(offlineWindowMillis);
+        snapshot.publish(snapshot.build(now, on, ghosts, totalHours, playHours, offHours));
     }
 
     private String formatTotalHours(long totalSeconds) {

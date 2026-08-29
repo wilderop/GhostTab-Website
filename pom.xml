@@ -37,6 +37,11 @@
             <artifactId>snakeyaml</artifactId>
             <version>2.2</version>
         </dependency>
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+            <version>2.11.0</version>
+        </dependency>
     </dependencies>
 
     <build>
@@ -67,6 +72,10 @@
                                 <relocation>
                                     <pattern>org.yaml.snakeyaml</pattern>
                                     <shadedPattern>com.wilderop.ghost.lib.snakeyaml</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>com.google.gson</pattern>
+                                    <shadedPattern>com.wilderop.ghost.lib.gson</shadedPattern>
                                 </relocation>
                             </relocations>
                             <filters>
